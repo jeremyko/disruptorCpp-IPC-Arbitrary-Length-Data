@@ -380,16 +380,16 @@ int64_t SharedMemRingBuffer::ClaimIndex(int nWantLen, int* nOutPositionToWrite )
 
         if  ( wrapPoint >=  gatingSequence ) 
         {
-            //std::this_thread::yield();
-            std::this_thread::sleep_for(std::chrono::nanoseconds(1)); 
+            std::this_thread::yield();
+            //std::this_thread::sleep_for(std::chrono::nanoseconds(1)); 
             continue;
         }
         else if  ( nNextSeqForClaim>0 && data_status == DATA_EMPTY ) 
         {
             //because of arbitrary data length, we need to wait until previous data is set 
 
-            //std::this_thread::yield();
-            std::this_thread::sleep_for(std::chrono::nanoseconds(1)); 
+            std::this_thread::yield();
+            //std::this_thread::sleep_for(std::chrono::nanoseconds(1)); 
 #if _DEBUG_
             //std::this_thread::sleep_for(std::chrono::milliseconds(1)); //FOR DEBUG ONLY!
             std::cout << "Ln[" << __LINE__ << "] " << "continue , DATA_EMPTY / nNextSeqForClaim:" << nNextSeqForClaim << '\n'; 
@@ -425,8 +425,8 @@ int64_t SharedMemRingBuffer::ClaimIndex(int nWantLen, int* nOutPositionToWrite )
                     //but don't over-write customer data 
                     //'gatingSequence == 0' means a consumer read index 0, so it is OK to write at index 0
                     
-                    //std::this_thread::yield();
-                    std::this_thread::sleep_for(std::chrono::nanoseconds(1)); 
+                    std::this_thread::yield();
+                    //std::this_thread::sleep_for(std::chrono::nanoseconds(1)); 
 
 #if _DEBUG_
                     //std::this_thread::sleep_for(std::chrono::milliseconds(10)); //FOR DEBUG ONLY!
@@ -479,8 +479,8 @@ bool SharedMemRingBuffer::Commit(int nUserId, int64_t index)
             break;
         }
     
-        //std::this_thread::yield();
-        std::this_thread::sleep_for(std::chrono::nanoseconds(1)); 
+        std::this_thread::yield();
+        //std::this_thread::sleep_for(std::chrono::nanoseconds(1)); 
     }
     pWaitStrategy_->SignalAllWhenBlocking(); //blocking wait strategy only.
 

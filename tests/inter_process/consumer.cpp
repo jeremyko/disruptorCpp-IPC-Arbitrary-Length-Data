@@ -35,8 +35,8 @@ int LOOP_CNT ;
 
 //Wait Strategy 
 //SharedMemRingBuffer gSharedMemRingBuffer (YIELDING_WAIT); 
-//SharedMemRingBuffer gSharedMemRingBuffer (SLEEPING_WAIT); 
-SharedMemRingBuffer gSharedMemRingBuffer (BLOCKING_WAIT); 
+SharedMemRingBuffer gSharedMemRingBuffer (SLEEPING_WAIT); 
+//SharedMemRingBuffer gSharedMemRingBuffer (BLOCKING_WAIT); 
         
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -108,7 +108,7 @@ void TestFunc(int nCustomerId)
 
     long long nElapsedMicro= elapsed.SetEndTime(MICRO_SEC_RESOLUTION);
     snprintf(szMsg, sizeof(szMsg), "**** consumer test %d -> elapsed :%lld (micro sec) TPS %lld / data[%s]", 
-        gTestIndex , nElapsedMicro, (long long) (10000L*1000000L)/nElapsedMicro, szData );
+        gTestIndex , nElapsedMicro, (long long) (LOOP_CNT*1000000L)/nElapsedMicro, szData );
     {AtomicPrint atomicPrint(szMsg);}
 }
 
@@ -127,8 +127,8 @@ int main(int argc, char* argv[])
     int nCustomerId = atoi(argv[1]);
     int MAX_TEST = 1;
     LOOP_CNT = 10000;    //should be same as producer for TEST
-    int MAX_RBUFFER_CAPACITY = 1024*4; //should be same as producer for TEST
-    int MAX_RAW_MEM_BUFFER_SIZE = 100000; //should be same as producer for TEST
+    int MAX_RBUFFER_CAPACITY = 1024*8; //should be same as producer for TEST
+    int MAX_RAW_MEM_BUFFER_SIZE = 1000000; //should be same as producer for TEST
 
     if(! gSharedMemRingBuffer.Init(123456,
                                    MAX_RBUFFER_CAPACITY, 

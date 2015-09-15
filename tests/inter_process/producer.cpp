@@ -33,8 +33,8 @@ int gTestIndex;
 int LOOP_CNT ;
 
 //SharedMemRingBuffer gSharedMemRingBuffer (YIELDING_WAIT); 
-//SharedMemRingBuffer gSharedMemRingBuffer (SLEEPING_WAIT); 
-SharedMemRingBuffer gSharedMemRingBuffer (BLOCKING_WAIT); 
+SharedMemRingBuffer gSharedMemRingBuffer (SLEEPING_WAIT); 
+//SharedMemRingBuffer gSharedMemRingBuffer (BLOCKING_WAIT); 
 
 ///////////////////////////////////////////////////////////////////////////////
 void TestFunc()
@@ -47,7 +47,6 @@ void TestFunc()
     {
         PositionInfo my_data;
         int nWritePosition = 0;
-        
 
         if(i%2==0)
         {
@@ -87,8 +86,8 @@ int main(int argc, char* argv[])
 {
     int MAX_TEST = 1;
     LOOP_CNT = 10000; //should be same as consumer fot TEST
-    int MAX_RBUFFER_CAPACITY = 1024*4; //should be same as consumer for TEST
-    int MAX_RAW_MEM_BUFFER_SIZE = 100000; //should be same as consumer for TEST
+    int MAX_RBUFFER_CAPACITY = 1024*8; //should be same as consumer for TEST
+    int MAX_RAW_MEM_BUFFER_SIZE = 1000000; //should be same as consumer for TEST
 
     if(! gSharedMemRingBuffer.Init(123456,
                                    MAX_RBUFFER_CAPACITY, 

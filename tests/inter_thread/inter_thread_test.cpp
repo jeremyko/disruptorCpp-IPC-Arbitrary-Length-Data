@@ -39,8 +39,8 @@ int MAX_CONSUMER_CNT;
 int LOOP_CNT ;
 
 //SharedMemRingBuffer gSharedMemRingBuffer (YIELDING_WAIT); 
-//SharedMemRingBuffer gSharedMemRingBuffer (SLEEPING_WAIT); 
-SharedMemRingBuffer gSharedMemRingBuffer (BLOCKING_WAIT); 
+SharedMemRingBuffer gSharedMemRingBuffer (SLEEPING_WAIT); 
+//SharedMemRingBuffer gSharedMemRingBuffer (BLOCKING_WAIT); 
 
 ///////////////////////////////////////////////////////////////////////////////
 void ThreadWorkWrite(string tid, int nMyId) 
@@ -191,10 +191,10 @@ int main(int argc, char* argv[])
 {
     int MAX_TEST = 1;
     LOOP_CNT = 1000;
-    int MAX_RBUFFER_CAPACITY = 1024*4; 
-    int MAX_RAW_MEM_BUFFER_SIZE = 30; 
-    MAX_PRODUCER_CNT = 2; 
-    MAX_CONSUMER_CNT = 2; 
+    int MAX_RBUFFER_CAPACITY = 1024*8; 
+    int MAX_RAW_MEM_BUFFER_SIZE = 1000000; 
+    MAX_PRODUCER_CNT = 1; 
+    MAX_CONSUMER_CNT = 1; 
 
     if(! gSharedMemRingBuffer.Init(123456,
                                    MAX_RBUFFER_CAPACITY, 
