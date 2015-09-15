@@ -12,7 +12,6 @@
     cd tests/inter_process 
     make -f make_procucer.mk clean all
     make -f make_consumer.mk clean all
-    ./inter_thread_test
 
     //whenever you change number of cunsumer, producer or memory size, 
     //clear shared memory first.
