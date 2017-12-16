@@ -1,13 +1,13 @@
 # disruptorCpp-IPC for arbitrary length of data 
-##slightly modified version of [disruptorCpp-IPC](https://github.com/jeremyko/disruptorCpp-IPC)
+## slightly modified version of [disruptorCpp-IPC](https://github.com/jeremyko/disruptorCpp-IPC)
 
-###inter thread test 
+### inter thread test 
 
     cd tests/inter_thread 
     make clean all
     ./inter_thread_test 
 
-###inter process test 
+### inter process test 
 
     cd tests/inter_process 
     make -f make_procucer.mk clean all
