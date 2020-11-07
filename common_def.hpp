@@ -2,6 +2,7 @@
 #ifndef COMMON_DEF_HPP
 #define COMMON_DEF_HPP
 #include <atomic>
+#include <iostream>
 #include <condition_variable>
 
 #include <pthread.h> //blocking strategy : mutex, condition_var on shared memory
@@ -19,7 +20,7 @@
 #define  LOG_WHERE "("<<__FILE__<<"-"<<__func__<<"-"<<__LINE__<<") "
 #define  WHERE_DEF __FILE__,__func__,__LINE__
 
-#ifdef DEBUG_PRINTF
+#ifdef DEBUG_PRINT
 #define  DEBUG_LOG(x)  std::cout<<LOG_WHERE << x << "\n"
 #define  DEBUG_RED_LOG(x) std::cout<<LOG_WHERE << COLOR_RED<< x << COLOR_RESET << "\n"
 #define  DEBUG_GREEN_LOG(x) std::cout<<LOG_WHERE << COLOR_GREEN<< x << COLOR_RESET << "\n"
