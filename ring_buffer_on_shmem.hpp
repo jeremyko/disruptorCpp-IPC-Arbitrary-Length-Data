@@ -20,8 +20,8 @@
  THE SOFTWARE.
  ****************************************************************************/
 
-#ifndef __DISRUPTORCPP_RING_BUFFER_ON_SHM_HPP__
-#define __DISRUPTORCPP_RING_BUFFER_ON_SHM_HPP__
+#ifndef DISRUPTORCPP_RING_BUFFER_ON_SHM_HPP
+#define DISRUPTORCPP_RING_BUFFER_ON_SHM_HPP
 
 #include <iostream>
 #include <atomic>
@@ -33,53 +33,66 @@
 #include "shared_mem_manager.hpp" 
 #include "wait_strategy.hpp"
 
-using namespace std;
+///////////////////////////////////////////////////////////////////////////////
+typedef enum _ENUM_DATA_STATUS_
+{
+    DATA_EMPTY,
+    DATA_EXISTS
+} ENUM_DATA_STATUS ;
+
+typedef struct _PositionInfo_
+{
+    ENUM_DATA_STATUS  status;
+    size_t  start_position; 
+    size_t  offset_position;
+    size_t  len;
+} PositionInfo ;
 
 ///////////////////////////////////////////////////////////////////////////////
 class SharedMemRingBuffer
 {
     public:
         SharedMemRingBuffer();
-        SharedMemRingBuffer(ENUM_WAIT_STRATEGY waitStrategyType);
+        SharedMemRingBuffer(ENUM_WAIT_STRATEGY wait_strategy);
         ~SharedMemRingBuffer();
 
-        bool     Init(key_t keyIndexBuffer, int nIndexBufferSize , 
-                      key_t keyDataBuffer,  int nDataBufferSize );
+        bool     Init(key_t key_index_buffer, size_t size_index_buffer , 
+                      key_t key_data_buffer , size_t size_data_buffer );
 
         void     ResetRingBufferState();
         bool     Terminate();
-        bool     SetData( int64_t nIndex, PositionInfo* pData, int nWritePosition,  char* pRawData );
-        const char*  GetData(int64_t nIndex, int* nOutLen);
+        bool     SetData( int64_t index, PositionInfo* pos_info, size_t write_position, char* raw_data );
+        const char*  GetData(int64_t index, size_t* out_len);
 
-        bool     RegisterConsumer (int nId, int64_t* nIndexforCustomerUse);
+        bool     RegisterConsumer (int id, int64_t* index_for_customer);
         int64_t  GetTranslatedIndex( int64_t sequence);
         void     SignalAll(); 
  
         //producer
-        int64_t  ClaimIndex(int nWantLen, int* nOutPositionToWrite);
-        bool     Commit(int nUserId, int64_t index);
+        int64_t  ClaimIndex(size_t want_len, size_t* out_position_to_write);
+        bool     Commit(int64_t index);
         
         //consumer
-        int64_t  WaitFor(int nUserId, int64_t index);
-        bool     CommitRead(int nUserId, int64_t index);
+        int64_t  WaitFor(size_t user_id, int64_t index);
+        bool     CommitRead(size_t user_id, int64_t index);
 
     private:
-        int   nRawMemBufferCapacity_ ; 
-        char* pRawMemBuffer_ ; 
-        int   nMaxDataSize_ ;
-        int   nBufferSize_;
-        int   nTotalMemSize_ ;
-        ENUM_WAIT_STRATEGY          waitStrategyType_;
-        WaitStrategyInterface*      pWaitStrategy_ ;
-        RingBuffer< PositionInfo* > ringBuffer_ ; 
+        size_t   raw_mem_buffer_capacity_ ; 
+        char*    raw_mem_buffer_ ; 
+        size_t   max_data_size_ ;
+        size_t   buffer_size_;
+        size_t   total_mem_size_ ;
+        ENUM_WAIT_STRATEGY          wait_strategy_type_;
+        WaitStrategyInterface*      wait_strategy_ ;
+        RingBuffer< PositionInfo* > ring_buffer_ ; 
+        SharedMemoryManager         shared_raw_memory_buffer_ ;
+        SharedMemoryManager         shared_index_buffer_ ;
+        StatusOnSharedMem*          ring_buffer_status_on_shared_mem_; 
 
-        SharedMemoryManager sharedRawMemoryBuffer_ ;
-        SharedMemoryManager sharedIndexBuffer_ ;
-        StatusOnSharedMem*  pStatusOnSharedMem_; 
         int64_t  GetMinIndexOfConsumers();
         int64_t  GetNextSequenceForClaim();
-        bool     InitRawMemBuffer(key_t key, int nSize );
-        bool     InitIndexBuffer(key_t  key, int nSize);
+        bool     InitRawMemBuffer(key_t key, size_t size);
+        bool     InitIndexBuffer (key_t key, size_t size);
     
         //no copy allowed
         SharedMemRingBuffer(SharedMemRingBuffer&) = delete;   

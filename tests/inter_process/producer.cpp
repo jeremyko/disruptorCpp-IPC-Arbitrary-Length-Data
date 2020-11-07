@@ -27,9 +27,8 @@
 #include "../../atomic_print.hpp"
 #include "../../elapsed_time.hpp"
 
-using namespace std;
+std::mutex AtomicPrint::lock_mutex_ ;
 
-int gTestIndex;
 int LOOP_CNT ;
 
 //SharedMemRingBuffer gSharedMemRingBuffer (YIELDING_WAIT); 
@@ -39,52 +38,46 @@ SharedMemRingBuffer gSharedMemRingBuffer (SLEEPING_WAIT);
 ///////////////////////////////////////////////////////////////////////////////
 void TestFunc()
 {
-    char    szMsg[1024];
-    int64_t nMyIndex = -1;
-    char    szRawData[1024];
+    char    msg[2048];
+    int64_t my_index = -1;
+    char    raw_data[1024];
 
-    for(int i=1; i <= LOOP_CNT  ; i++) 
-    {
+    for(int i=1; i <= LOOP_CNT  ; i++) {
         PositionInfo my_data;
-        int nWritePosition = 0;
+        size_t write_position = 0;
 
-        if(i%2==0)
-        {
-            my_data.nLen = snprintf(szRawData, sizeof(szRawData), "raw data  %06d", i);
-        }
-        else
-        {
-            my_data.nLen = snprintf(szRawData, sizeof(szRawData), "raw data  %08d", i);
+        if(i%2==0) {
+            my_data.len = snprintf(raw_data, sizeof(raw_data), "raw data  %06d", i);
+        } else {
+            my_data.len = snprintf(raw_data, sizeof(raw_data), "raw data  %08d", i);
         }
 
-        nMyIndex = gSharedMemRingBuffer.ClaimIndex(my_data.nLen, & nWritePosition );
+        my_index = gSharedMemRingBuffer.ClaimIndex(my_data.len, & write_position );
 
-        my_data.nStartPosition = nWritePosition  ; 
-        my_data.nOffsetPosition = nWritePosition + my_data.nLen; //fot next write
+        my_data.start_position = write_position  ; 
+        my_data.offset_position = write_position + my_data.len; //fot next write
         my_data.status = DATA_EXISTS ;
          
 #ifdef _DEBUG_WRITE_
-        snprintf(szMsg, sizeof(szMsg), 
-                "[id:%d]    [%s-%d] Write nMyIndex[%ld] %s: want len[%d] nWritePosition [%d] my_data.nLastPosition [%d]", 
-                 0, __func__, __LINE__, nMyIndex, szRawData, my_data.nLen, nWritePosition, my_data.nOffsetPosition );
-        {AtomicPrint atomicPrint(szMsg);}
+        snprintf(msg, sizeof(msg), 
+                "Write my_index[%ld] %s: want len[%ld] write_position [%ld] my_data.nLastPosition [%ld]", 
+                 my_index, raw_data, my_data.len, write_position, my_data.offset_position );
+        {AtomicPrint atomicPrint(msg);}
 #endif
+        gSharedMemRingBuffer.SetData( my_index, &my_data, write_position, raw_data );
 
-        gSharedMemRingBuffer.SetData( nMyIndex, &my_data, nWritePosition, szRawData );
-
-        gSharedMemRingBuffer.Commit(0, nMyIndex); 
+        gSharedMemRingBuffer.Commit( my_index); 
     }
 
-    snprintf(szMsg, sizeof(szMsg), 
-            "*********************[id:%d]    [%s-%d] Write Done", 0, __func__, __LINE__ );
-    {AtomicPrint atomicPrint(szMsg);}
+    snprintf(msg, sizeof(msg), "*  write done, last data [%s]",  
+            raw_data );
+    {AtomicPrint atomicPrint(msg);}
 
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 int main(int argc, char* argv[])
 {
-    int MAX_TEST = 1;
     LOOP_CNT = 10000; //should be same as consumer fot TEST
     int MAX_RBUFFER_CAPACITY = 1024*8; //should be same as consumer for TEST
     int MAX_RAW_MEM_BUFFER_SIZE = 1000000; //should be same as consumer for TEST
@@ -92,22 +85,16 @@ int main(int argc, char* argv[])
     if(! gSharedMemRingBuffer.Init(123456,
                                    MAX_RBUFFER_CAPACITY, 
                                    923456,
-                                   MAX_RAW_MEM_BUFFER_SIZE ) )
-    { 
+                                   MAX_RAW_MEM_BUFFER_SIZE ) ) { 
         //Error!
         return 1; 
     }
 
-    for ( gTestIndex=0; gTestIndex < MAX_TEST; gTestIndex++)
-    {
-        ElapsedTime elapsed;
-
-        TestFunc();
-
-        long long nElapsedMicro= elapsed.SetEndTime(MICRO_SEC_RESOLUTION);
-        std::cout << "**** test " << gTestIndex << " / count:"<< LOOP_CNT << " -> elapsed : "<< nElapsedMicro << "(micro sec) /"
-            << (long long) (LOOP_CNT*1000000L)/nElapsedMicro <<" TPS\n";
-    }
+    ElapsedTime elapsed;
+    TestFunc();
+    long long elapsed_micro = elapsed.SetEndTime(MICRO_SEC_RESOLUTION);
+    std::cout << "**** count:"<< LOOP_CNT << " -> elapsed : "<< elapsed_micro << "(micro sec) /"
+        << (long long) (LOOP_CNT*1000000L)/elapsed_micro <<" TPS\n";
 
     return 0;
 }

@@ -28,9 +28,8 @@
 #include "../../atomic_print.hpp"
 #include "../../elapsed_time.hpp"
 
-using namespace std;
+std::mutex AtomicPrint::lock_mutex_ ;
 
-int gTestIndex;
 int LOOP_CNT ;
 
 //Wait Strategy 
@@ -40,92 +39,79 @@ SharedMemRingBuffer gSharedMemRingBuffer (SLEEPING_WAIT);
         
 
 ///////////////////////////////////////////////////////////////////////////////
-void TestFunc(int nCustomerId)
+void TestFunc(int consumer_id)
 {
     //1. register
-    int64_t nIndexforCustomerUse = -1;
-    if(!gSharedMemRingBuffer.RegisterConsumer(nCustomerId, &nIndexforCustomerUse ) )
-    {
+    int64_t index_for_customer_use = -1;
+    if(!gSharedMemRingBuffer.RegisterConsumer(consumer_id, & index_for_customer_use)) {
         return; //error
     }
 
     //2. run
     ElapsedTime elapsed;
-    char    szMsg[1024];
-    char    szData[1024];
-    int64_t nTotalFetched = 0; 
-    int64_t nMyIndex = nIndexforCustomerUse ; 
-    int64_t nReturnedIndex =-1;
+    char    msg[2048];
+    int64_t total_fetched = 0; 
+    int64_t  my_index = index_for_customer_use ; 
+    int64_t returned_index =-1;
+    bool is_first=true;
 
-    bool bFirst=true;
-
-    for(int i=0; i < LOOP_CNT  ; i++)
-    {
-        if( nTotalFetched >= LOOP_CNT ) 
-        {
+    char  tmp_data[1024];
+    for(int i=0; i < LOOP_CNT  ; i++) {
+        if( total_fetched >= LOOP_CNT ) {
             break;
         }
+        returned_index = gSharedMemRingBuffer.WaitFor(consumer_id, my_index);
 
-        nReturnedIndex = gSharedMemRingBuffer.WaitFor(nCustomerId, nMyIndex);
-
-        if(bFirst)
-        {
-            bFirst=false;
+        if(is_first) {
+            is_first=false;
             elapsed.SetStartTime();
         }
-
 #ifdef _DEBUG_READ_
-        snprintf(szMsg, sizeof(szMsg), 
-                "[id:%d]    \t\t\t\t\t\t\t\t\t\t\t\t[%s-%d] WaitFor nMyIndex[%" PRId64 "] nReturnedIndex[%" PRId64 "]", 
-                nCustomerId, __func__, __LINE__, nMyIndex, nReturnedIndex );
-        {AtomicPrint atomicPrint(szMsg);}
+        snprintf(msg, sizeof(msg), 
+                "[id:%d]    \t\t\t\t\t\t\t\t\t\t\t\t[%s-%d] WaitFor my_index[%" PRId64 "] returned_index[%" PRId64 "]", 
+                consumer_id, __func__, __LINE__, my_index, returned_index );
+        {AtomicPrint atomicPrint(msg);}
 #endif
-
-        for(int64_t j = nMyIndex; j <= nReturnedIndex; j++)
-        {
+        for(int64_t j = my_index; j <= returned_index; j++) {
             //batch job 
-            int nDataLen =0;
-            const char* pData =  gSharedMemRingBuffer.GetData(j, & nDataLen );
+            size_t data_len =0;
+            const char* data =  gSharedMemRingBuffer.GetData(j, & data_len );
             //const char*  SharedMemRingBuffer::GetData(int64_t nIndex, int* nOutLen)
 
-            memset(szData, 0x00, sizeof(szData));
-            strncpy(szData, pData, nDataLen);
-
+            memset(tmp_data, 0x00, sizeof(tmp_data));
+            strncpy(tmp_data, data, data_len);
 #ifdef _DEBUG_READ_
-            snprintf(szMsg, sizeof(szMsg), 
-                    "[id:%d]   \t\t\t\t\t\t\t\t\t\t\t\t[%s-%d]  nMyIndex[%" PRId64 ", translated:%" PRId64 "] data [%s] ^^", 
-                    nCustomerId, __func__, __LINE__, j, gSharedMemRingBuffer.GetTranslatedIndex(j), szData );
-            {AtomicPrint atomicPrint(szMsg);}
+            snprintf(msg, sizeof(msg), 
+                    "[id:%d]   \t\t\t\t\t\t\t\t\t\t\t\t[%s-%d]  my_index[%" PRId64 ", translated:%" PRId64 "] data [%s] ^^", 
+                    consumer_id, __func__, __LINE__, j, gSharedMemRingBuffer.GetTranslatedIndex(j), tmp_data );
+            {AtomicPrint atomicPrint(msg);}
 #endif
-
-            gSharedMemRingBuffer.CommitRead(nCustomerId, j );
-            nTotalFetched++;
+            gSharedMemRingBuffer.CommitRead(consumer_id, j );
+            total_fetched++;
 
         } //for
 
-        nMyIndex = nReturnedIndex + 1; 
+        my_index = returned_index + 1; 
     }
 
-    long long nElapsedMicro= elapsed.SetEndTime(MICRO_SEC_RESOLUTION);
-    snprintf(szMsg, sizeof(szMsg), "**** consumer test %d -> elapsed :%lld (micro sec) TPS %lld / data[%s]", 
-        gTestIndex , nElapsedMicro, (long long) (LOOP_CNT*1000000L)/nElapsedMicro, szData );
-    {AtomicPrint atomicPrint(szMsg);}
+    long long elapsed_micro= elapsed.SetEndTime(MICRO_SEC_RESOLUTION);
+    snprintf(msg, sizeof(msg), "* consumer -> elapsed :%lld (micro sec) last data [%s] TPS %lld ", 
+        elapsed_micro, tmp_data, (long long) (LOOP_CNT*1000000L)/elapsed_micro );
+    {AtomicPrint atomicPrint(msg);}
 }
 
 
 ///////////////////////////////////////////////////////////////////////////////
 int main(int argc, char* argv[])
 {
-    if(argc != 2)
-    {
-        std::cout << "usage: "<< argv[0]<<" customer_index"  << '\n';
+    if(argc != 2) {
+        std::cout << "usage: "<< argv[0]<<" consumer_index"  << '\n';
         std::cout << "ex: "<< argv[0]<<" 0"  << '\n';
         std::cout << "ex: "<< argv[0]<<" 1"  << '\n';
-        return 1;
+        exit(1);
     }
 
-    int nCustomerId = atoi(argv[1]);
-    int MAX_TEST = 1;
+    int consumer_id = atoi(argv[1]);
     LOOP_CNT = 10000;    //should be same as producer for TEST
     int MAX_RBUFFER_CAPACITY = 1024*8; //should be same as producer for TEST
     int MAX_RAW_MEM_BUFFER_SIZE = 1000000; //should be same as producer for TEST
@@ -135,14 +121,11 @@ int main(int argc, char* argv[])
                                    923456,
                                    MAX_RAW_MEM_BUFFER_SIZE ) )
     { 
-        //Error!
+        std::cerr << "error" << '\n';
         return 1; 
     }
 
-    for ( gTestIndex=0; gTestIndex < MAX_TEST; gTestIndex++)
-    {
-        TestFunc(nCustomerId);
-    }
+    TestFunc(consumer_id);
 
     return 0;
 }

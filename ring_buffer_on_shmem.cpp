@@ -21,296 +21,238 @@
  ****************************************************************************/
 
 #include "ring_buffer_on_shmem.hpp" 
-#include "atomic_print.hpp"
 
-int LEN_ONE_BUFFER_DATA = sizeof(PositionInfo);
-
-#define _DEBUG_        0
-#define _DEBUG_COMMIT  0
-
-std::mutex AtomicPrint::lock_mutex_ ;
-
-
+size_t LEN_ONE_BUFFER_DATA = sizeof(PositionInfo);
 ///////////////////////////////////////////////////////////////////////////////
 SharedMemRingBuffer::SharedMemRingBuffer()
 {
-    pStatusOnSharedMem_ = NULL;
-    waitStrategyType_ = SLEEPING_WAIT ;
-    pWaitStrategy_ = NULL;
+    max_data_size_ = 0;
+    buffer_size_ = 0;
+    total_mem_size_ = 0;
+    ring_buffer_status_on_shared_mem_ = NULL;
+    wait_strategy_type_ = SLEEPING_WAIT ;
+    wait_strategy_ = NULL;
 }
 ///////////////////////////////////////////////////////////////////////////////
-SharedMemRingBuffer::SharedMemRingBuffer(ENUM_WAIT_STRATEGY waitStrategyType)
+SharedMemRingBuffer::SharedMemRingBuffer(ENUM_WAIT_STRATEGY wait_strategy)
 {
-    pStatusOnSharedMem_ = NULL;
-    waitStrategyType_ = waitStrategyType ;
-    pWaitStrategy_ = NULL;
+    max_data_size_ = 0;
+    buffer_size_ = 0;
+    total_mem_size_ = 0;
+    ring_buffer_status_on_shared_mem_ = NULL;
+    wait_strategy_type_ = wait_strategy ;
+    wait_strategy_ = NULL;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 SharedMemRingBuffer::~SharedMemRingBuffer()
 {
-    if(pWaitStrategy_)
-    {
-        delete pWaitStrategy_;
-        pWaitStrategy_ = NULL;
+    if(wait_strategy_) {
+        delete wait_strategy_;
+        wait_strategy_ = NULL;
     }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 bool SharedMemRingBuffer::Terminate()
 {
-    if(! sharedIndexBuffer_.DetachShMem())
-    {
-        std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << "Error " << '\n'; 
+    if(! shared_index_buffer_.DetachShMem()) {
+        DEBUG_ELOG("Error"); 
         return false;
     }
-
-    if(! sharedIndexBuffer_.RemoveShMem())
-    {
-        std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << 
-            "Ln[" << __LINE__ << "] " << "Error " << '\n'; 
+    if(! shared_index_buffer_.RemoveShMem()) {
+        DEBUG_ELOG("Error"); 
         return false;
     }
-
-    if(! sharedRawMemoryBuffer_.DetachShMem())
-    {
-        std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << "Error " << '\n'; 
+    if(! shared_raw_memory_buffer_.DetachShMem()) {
+        DEBUG_ELOG("Error"); 
         return false;
     }
-
-    if(! sharedRawMemoryBuffer_.RemoveShMem())
-    {
-        std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << 
-            "Ln[" << __LINE__ << "] " << "Error " << '\n'; 
+    if(! shared_raw_memory_buffer_.RemoveShMem()) {
+        DEBUG_ELOG("Error"); 
         return false;
     }
-
     return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-bool SharedMemRingBuffer::RegisterConsumer (int nId, int64_t* pIndexforCustomerUse)
+bool SharedMemRingBuffer::RegisterConsumer (int id, int64_t* index_for_customer)
 {
-    if(pStatusOnSharedMem_->arrayOfConsumerIndexes[nId] == -1 )
-    {
+    if(ring_buffer_status_on_shared_mem_->array_consumer_indexes[id] == -1 ) {
         //처음 등록 
-        pStatusOnSharedMem_->registered_consumer_count++;
-        if( pStatusOnSharedMem_->registered_consumer_count >= MAX_CONSUMER)
-        {
-            std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << "Error: Exceeds MAX_CONSUMER : " << MAX_CONSUMER << '\n'; 
+        ring_buffer_status_on_shared_mem_->registered_consumer_count++;
+        if( ring_buffer_status_on_shared_mem_->registered_consumer_count >= MAX_CONSUMER) {
+            DEBUG_ELOG("Error: Exceeds MAX_CONSUMER : " << MAX_CONSUMER); 
             return false;
         }
 
-        if(pStatusOnSharedMem_->cursor >= 0 )
-        {
-            std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << "cursor >= 0 " << '\n'; 
+        if(ring_buffer_status_on_shared_mem_->cursor >= 0 ) {
+            DEBUG_LOG("cursor >= 0"); 
             //데이터 전달 중이데 새로운 소비자가 추가
-            pStatusOnSharedMem_->arrayOfConsumerIndexes[nId] = pStatusOnSharedMem_->cursor.load() ; 
-        }
-        else
-        {
-            std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << "set  0 " << '\n'; 
-            pStatusOnSharedMem_->arrayOfConsumerIndexes[nId] = 0; 
+            ring_buffer_status_on_shared_mem_->array_consumer_indexes[id] = 
+                ring_buffer_status_on_shared_mem_->cursor.load() ; 
+        } else {
+            DEBUG_LOG("set 0 "); 
+            ring_buffer_status_on_shared_mem_->array_consumer_indexes[id] = 0; 
         }
 
-        *pIndexforCustomerUse = pStatusOnSharedMem_->arrayOfConsumerIndexes[nId];
-    }
-    else
-    {
+        *index_for_customer = ring_buffer_status_on_shared_mem_->array_consumer_indexes[id];
+    } else {
         //last read message index 
         //기존 최종 업데이트 했던 인덱스 + 1 돌려준다. consumer가 호출할 인덱스 이므로 ..
-        *pIndexforCustomerUse = pStatusOnSharedMem_->arrayOfConsumerIndexes[nId] + 1;
+        *index_for_customer = ring_buffer_status_on_shared_mem_->array_consumer_indexes[id] + 1;
     }
-
-    std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << "USAGE_CONSUMER ID : " << nId<< " / index :"<< *pIndexforCustomerUse << '\n'; 
-
+    DEBUG_LOG("USAGE_CONSUMER ID : " << id<< " / index : "<< *index_for_customer); 
     return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 void SharedMemRingBuffer::ResetRingBufferState() 
 {
-    if(pStatusOnSharedMem_ == NULL )
-    {
-        std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << "call InitIndexBuffer first !" << '\n'; 
+    if(ring_buffer_status_on_shared_mem_ == NULL ) {
+        DEBUG_LOG("call InitIndexBuffer first !"); 
         return;
     }
+    DEBUG_LOG("---"); 
 
-    std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " <<  '\n'; 
+    ring_buffer_status_on_shared_mem_->cursor.store(-1);
+    ring_buffer_status_on_shared_mem_->next.store(-1);
+    ring_buffer_status_on_shared_mem_->registered_producer_count.store(0);
+    ring_buffer_status_on_shared_mem_->registered_consumer_count.store(0);
 
-    pStatusOnSharedMem_->cursor.store(-1);
-    pStatusOnSharedMem_->next.store(-1);
-    pStatusOnSharedMem_->registered_producer_count.store(0);
-    pStatusOnSharedMem_->registered_consumer_count.store(0);
+    total_mem_size_ = 0;
 
-    nTotalMemSize_ = 0;
-
-    for(int i = 0; i < MAX_CONSUMER; i++)
-    {
-        pStatusOnSharedMem_->arrayOfConsumerIndexes[i] = -1;
+    for(int i = 0; i < MAX_CONSUMER; i++) {
+        ring_buffer_status_on_shared_mem_->array_consumer_indexes[i] = -1;
     }
-
     //for blocking wait strategy : shared mutex, shared cond var
-    pthread_mutexattr_t mutexAttr;
-    pthread_mutexattr_init(&mutexAttr);
-    pthread_mutexattr_setpshared(&mutexAttr, PTHREAD_PROCESS_SHARED);
-    pthread_mutex_init( & pStatusOnSharedMem_->mtxLock, &mutexAttr);
+    pthread_mutexattr_t mutex_attr;
+    pthread_mutexattr_init(&mutex_attr);
+    pthread_mutexattr_setpshared(&mutex_attr, PTHREAD_PROCESS_SHARED);
+    pthread_mutex_init( & ring_buffer_status_on_shared_mem_->mutex_lock, &mutex_attr);
 
-    pthread_condattr_t condAttr;
-    pthread_condattr_init(&condAttr);
-    pthread_condattr_setpshared(&condAttr, PTHREAD_PROCESS_SHARED);
-    pthread_cond_init( & pStatusOnSharedMem_->condVar, &condAttr);
+    pthread_condattr_t cond_attr;
+    pthread_condattr_init(&cond_attr);
+    pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
+    pthread_cond_init( & ring_buffer_status_on_shared_mem_->cond_var, &cond_attr);
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////
-bool SharedMemRingBuffer::Init(key_t keyIndexBuffer, int nIndexBufferSize , 
-                               key_t keyDataBuffer,  int nDataBufferSize   )
+bool SharedMemRingBuffer::Init(key_t key_index_buffer, size_t size_index_buffer , 
+                               key_t key_data_buffer,  size_t size_data_buffer  )
 {
-    if(!InitIndexBuffer(keyIndexBuffer, nIndexBufferSize))
-    {
+    if(!InitIndexBuffer(key_index_buffer, size_index_buffer)) {
         return false;
     }
-
-    if(!InitRawMemBuffer(keyDataBuffer, nDataBufferSize))
-    {
+    if(!InitRawMemBuffer(key_data_buffer, size_data_buffer)) {
         return false;
     }
-
     return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-bool SharedMemRingBuffer::InitRawMemBuffer(key_t keyDataBuffer, int nSize )
+bool SharedMemRingBuffer::InitRawMemBuffer(key_t key_data_buffer, size_t size )
 {
-    if(nSize<= 0)
-    {
+    if(size == 0) {
         std::cout << "Ln[" << __LINE__ << "] " << "Error: Invalid size " << '\n'; 
+        DEBUG_ELOG("Error: Invalid size : " << size); 
         return false;
     }
 
-    nMaxDataSize_ = nSize ;
-
-    nRawMemBufferCapacity_ = nSize;
-
+    max_data_size_ = size ;
+    raw_mem_buffer_capacity_ = size;
     bool bSharedMemFirstCreated = false;
-    if(! sharedRawMemoryBuffer_.CreateShMem(keyDataBuffer, nSize, &bSharedMemFirstCreated )) 
-    {
-        std::cout << "Ln[" << __LINE__ << "] " << "Error: shared memory failed " << '\n'; 
+    if(! shared_raw_memory_buffer_.CreateShMem(key_data_buffer, size, &bSharedMemFirstCreated )) {
+        DEBUG_ELOG("Error: shared memory failed "); 
         return false;
     }
-
-    if(! sharedRawMemoryBuffer_.AttachShMem())
-    {
-        std::cout << "Ln[" << __LINE__ << "] " << "Error: shared memory failed " << '\n'; 
+    if(! shared_raw_memory_buffer_.AttachShMem()) {
+        DEBUG_ELOG("Error: shared memory failed "); 
         return false;
     }
-
-    pRawMemBuffer_ = (char*) sharedRawMemoryBuffer_. GetShMemStartAddr(); 
-
+    raw_mem_buffer_ = (char*) shared_raw_memory_buffer_. GetShMemStartAddr(); 
     return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-bool SharedMemRingBuffer::InitIndexBuffer(key_t keyIndexBuffer, int nSize )
+bool SharedMemRingBuffer::InitIndexBuffer(key_t key_index_buffer, size_t size )
 {
-    if(nSize<= 0)
-    {
-        std::cout << "Ln[" << __LINE__ << "] " << "Error: Invalid size " << '\n'; 
+    if(size == 0) {
+        DEBUG_ELOG("Error: Invalid size : " << size); 
         return false;
     }
+    buffer_size_ = size;
 
-    nBufferSize_ = nSize;
-
-    if(!ringBuffer_.SetCapacity(nSize) )
-    {
-        std::cout << "Ln[" << __LINE__ << "] " << "Error: Invalid size " << '\n'; 
+    if(!ring_buffer_.SetCapacity(size) ) {
+        DEBUG_ELOG("Error: Invalid size : " << size); 
         return false;
     }
-
     //shared memory consists of : StatusOnSharedMem + actual data
-    nTotalMemSize_ = sizeof(_StatusOnSharedMem_)  + (sizeof(PositionInfo) * nSize) ;
+    total_mem_size_ = sizeof(_StatusOnSharedMem_)  + (sizeof(PositionInfo) * size) ;
 
     bool bSharedMemFirstCreated = false;
-    if(! sharedIndexBuffer_.CreateShMem(keyIndexBuffer, nTotalMemSize_, &bSharedMemFirstCreated )) 
-    {
-        std::cout << "Ln[" << __LINE__ << "] " << "Error: shared memory failed " << '\n'; 
+    if(! shared_index_buffer_.CreateShMem(key_index_buffer, total_mem_size_, &bSharedMemFirstCreated )) {
+        DEBUG_ELOG("Error: shared memory failed "); 
+        return false;
+    }
+    if(! shared_index_buffer_.AttachShMem()) {
+        DEBUG_ELOG("Error: shared memory failed "); 
         return false;
     }
 
-    if(! sharedIndexBuffer_.AttachShMem())
-    {
-        std::cout << "Ln[" << __LINE__ << "] " << "Error: shared memory failed " << '\n'; 
-        return false;
-    }
-
-    pStatusOnSharedMem_ = (StatusOnSharedMem*) sharedIndexBuffer_. GetShMemStartAddr(); 
-    if(bSharedMemFirstCreated)
-    {
+    ring_buffer_status_on_shared_mem_ = (StatusOnSharedMem*) shared_index_buffer_. GetShMemStartAddr(); 
+    if(bSharedMemFirstCreated) {
         ResetRingBufferState();
     }
+    char* buffer_start = (char*)shared_index_buffer_.GetShMemStartAddr() + sizeof(_StatusOnSharedMem_) ; 
 
-    char* pBufferStart = (char*)sharedIndexBuffer_.GetShMemStartAddr() + sizeof(_StatusOnSharedMem_) ; 
-
-    for(int i = 0; i < nSize; i++)
-    {
-        //PositionInfo* pData = new( (char*)pBufferStart + (sizeof(PositionInfo)*i)) PositionInfo; 
-        //ringBuffer_[i] = pData ;
-        ringBuffer_[i] = (PositionInfo*) ( (char*)pBufferStart + (sizeof(PositionInfo)*i) ) ;
+    for(size_t i = 0; i < size; i++) {
+        ring_buffer_[i] = (PositionInfo*) ( (char*)buffer_start + (sizeof(PositionInfo)*i) ) ;
     }
 
-    pStatusOnSharedMem_->nBufferSize = nSize;
-    pStatusOnSharedMem_->nTotalMemSize = nTotalMemSize_;
+    ring_buffer_status_on_shared_mem_->nBufferSize = size;
+    ring_buffer_status_on_shared_mem_->nTotalMemSize = total_mem_size_;
 
     //---------------------------------------------
     //wait strategy
-    if(waitStrategyType_ == BLOCKING_WAIT )
-    {
-        std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << "Wait Strategy :BLOCKING_WAIT" << '\n'; 
-        pWaitStrategy_ = new BlockingWaitStrategy(pStatusOnSharedMem_);
-    }
-    else if(waitStrategyType_ == YIELDING_WAIT )
-    {
-        std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << "Wait Strategy :YIELDING_WAIT" << '\n'; 
-        pWaitStrategy_ = new YieldingWaitStrategy(pStatusOnSharedMem_);
-    }
-    else if(waitStrategyType_ == SLEEPING_WAIT )
-    {
-        std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << "Wait Strategy :SLEEPING_WAIT" << '\n'; 
-        pWaitStrategy_ = new SleepingWaitStrategy(pStatusOnSharedMem_);
-    }
-    else
-    {
-        std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << "Invalid Wait Strategy :" << waitStrategyType_<< '\n'; 
+    if(wait_strategy_type_ == BLOCKING_WAIT ) {
+        DEBUG_LOG ("Wait Strategy :BLOCKING_WAIT" ); 
+        wait_strategy_ = new BlockingWaitStrategy(ring_buffer_status_on_shared_mem_);
+    } else if(wait_strategy_type_ == YIELDING_WAIT ) {
+        DEBUG_LOG( "Wait Strategy :YIELDING_WAIT" ); 
+        wait_strategy_ = new YieldingWaitStrategy(ring_buffer_status_on_shared_mem_);
+    } else if(wait_strategy_type_ == SLEEPING_WAIT ) {
+        DEBUG_LOG( "Wait Strategy :SLEEPING_WAIT" ); 
+        wait_strategy_ = new SleepingWaitStrategy(ring_buffer_status_on_shared_mem_);
+    } else {
+        DEBUG_ELOG( "Invalid Wait Strategy :" << wait_strategy_type_); 
         return false;
     }
-
     return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-const char*  SharedMemRingBuffer::GetData(int64_t nIndex, int* nOutLen)
+const char*  SharedMemRingBuffer::GetData(int64_t index, size_t* out_len)
 {
-    *nOutLen = ringBuffer_[nIndex]->nLen;
-    //std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " << "get data / pos:"<< ringBuffer_[nIndex]->nStartPosition << '\n'; 
-    return pRawMemBuffer_ + ringBuffer_[nIndex]->nStartPosition; 
+    *out_len = ring_buffer_[index]->len;
+    return raw_mem_buffer_ + ring_buffer_[index]->start_position; 
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 int64_t SharedMemRingBuffer::GetTranslatedIndex( int64_t sequence)
 {
-    return ringBuffer_.GetTranslatedIndex(sequence);
+    return ring_buffer_.GetTranslatedIndex(sequence);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-bool SharedMemRingBuffer::SetData( int64_t nIndex, PositionInfo* pData, int nWritePosition,  char* pRawData)
+bool SharedMemRingBuffer::SetData( int64_t index, PositionInfo* pos_info, size_t write_position, char* raw_data )
 {
     //claim 으로 얻은 position을 가지고 계산해서 저장  
     //update usage info. 
-    memcpy( ringBuffer_[nIndex], pData, LEN_ONE_BUFFER_DATA ); 
+    memcpy( ring_buffer_[index], pos_info, LEN_ONE_BUFFER_DATA ); 
 
     //actual data of arbitrary length
-    memcpy( pRawMemBuffer_ + nWritePosition, pRawData, pData->nLen);
+    memcpy( raw_mem_buffer_ + write_position, raw_data, pos_info->len);
 
     return true;
 }
@@ -318,224 +260,167 @@ bool SharedMemRingBuffer::SetData( int64_t nIndex, PositionInfo* pData, int nWri
 ///////////////////////////////////////////////////////////////////////////////
 int64_t SharedMemRingBuffer::GetMinIndexOfConsumers()
 {
-    int64_t nMinIndex = INT64_MAX ;
-    bool bFound = false;
-
-    for(int i = 0; i < pStatusOnSharedMem_->registered_consumer_count; i++)
-    {
-        int64_t nIndex = pStatusOnSharedMem_->arrayOfConsumerIndexes[i];
-        if( nIndex < nMinIndex )
-        {
-            nMinIndex = nIndex;
-            bFound = true;
+    int64_t min_index = INT64_MAX ;
+    bool is_found = false;
+    for(int i = 0; i < ring_buffer_status_on_shared_mem_->registered_consumer_count; i++) {
+        int64_t nIndex = ring_buffer_status_on_shared_mem_->array_consumer_indexes[i];
+        if( nIndex < min_index ) {
+            min_index = nIndex;
+            is_found = true;
         }
     }
-
-    if(!bFound)
-    {
+    if(!is_found) {
         return 0;
     }
-
-    return nMinIndex ;
+    return min_index ;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 int64_t SharedMemRingBuffer::GetNextSequenceForClaim()
 {
-    return pStatusOnSharedMem_->next.fetch_add(1) + 1;
+    return ring_buffer_status_on_shared_mem_->next.fetch_add(1) + 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-//[입력] nWantLen : 쓰기를 원하는 데이터 크기
-//[출력] nOutPositionToWrite : 버퍼에 쓸 위치
-//       사용할 index         
-int64_t SharedMemRingBuffer::ClaimIndex(int nWantLen, int* nOutPositionToWrite )
+//[input ] want_len : 쓰기를 원하는 데이터 크기
+//[output] out_position_to_write : 버퍼에 쓸 위치
+int64_t SharedMemRingBuffer::ClaimIndex(size_t want_len, size_t * out_position_to_write )
 {
-    if( nWantLen > nMaxDataSize_ )
-    {
-        std::cout << "["<< __func__ <<"-"<<  __LINE__ << "] " 
-                  << "Invalid data length : exceeds MAX  " << nMaxDataSize_<< '\n'; 
+    if( want_len > max_data_size_ ) {
+        DEBUG_ELOG("Error: Invalid data length : exceeds MAX : " << max_data_size_); 
         return -1;
     }
-
     ENUM_DATA_STATUS data_status = DATA_EMPTY;
-    int64_t nNextSeqForClaim = GetNextSequenceForClaim() ;
-    ringBuffer_[nNextSeqForClaim]->status =DATA_EMPTY; //init
-
+    int64_t next_seq_for_claim = GetNextSequenceForClaim() ;
+    ring_buffer_[next_seq_for_claim]->status =DATA_EMPTY; //init
     //다음 쓰기 위치 - 링버퍼 크기 = 링버퍼 한번 순회 이전위치, 
     //데이터 쓰기 작업이 링버퍼를 완전히 한바퀴 순회한 경우
     //여기서 더 진행하면 데이터를 이전 덮어쓰게 된다.
-    //만약 아직 데이터를 read하지 못한 상태(min customer index가 wrap position보다 작거나 같은 경우)
-    //라면 쓰기 작업은 대기해야 한다
-    int64_t wrapPoint = nNextSeqForClaim - nBufferSize_;
+    //만약 아직 데이터를 read하지 못한 상태
+    //(min customer index가 wrap position보다 작거나 같은 경우)라면 쓰기 작업은 대기해야 한다
+    int64_t wrap_point = next_seq_for_claim - buffer_size_;
 
-    do
-    {
-        if(nNextSeqForClaim>0)
-        {
-            data_status = ringBuffer_[nNextSeqForClaim-1]->status ;
+    do {
+        if(next_seq_for_claim>0) {
+            data_status = ring_buffer_[next_seq_for_claim-1]->status ;
         }
 
-        int64_t gatingSequence = GetMinIndexOfConsumers();
-
-        if  ( wrapPoint >=  gatingSequence ) 
-        {
+        int64_t gating_seq = GetMinIndexOfConsumers();
+        if  ( wrap_point >=  gating_seq ) {
             std::this_thread::yield();
-            //std::this_thread::sleep_for(std::chrono::nanoseconds(1)); 
             continue;
-        }
-        else if  ( nNextSeqForClaim>0 && data_status == DATA_EMPTY ) 
-        {
+        } else if  ( next_seq_for_claim>0 && data_status == DATA_EMPTY ) {
             //because of arbitrary data length, we need to wait until previous data is set 
 
             std::this_thread::yield();
-            //std::this_thread::sleep_for(std::chrono::nanoseconds(1)); 
-#if _DEBUG_
-            //std::this_thread::sleep_for(std::chrono::milliseconds(1)); //FOR DEBUG ONLY!
-            std::cout << "Ln[" << __LINE__ << "] " << "continue , DATA_EMPTY / nNextSeqForClaim:" << nNextSeqForClaim << '\n'; 
-#endif
+            DEBUG_LOG("continue , DATA_EMPTY / next_seq_for_claim:" << next_seq_for_claim); 
             continue;
-        }
-        else
-        {
-            //calculate nOutPositionToWrite
-            if(nNextSeqForClaim==0)
-            {
-                *nOutPositionToWrite = 0;
-            }
-            else
-            {
-                *nOutPositionToWrite = ringBuffer_[nNextSeqForClaim-1]->nOffsetPosition ;
-#if _DEBUG_
-                std::cout << "Ln[" << __LINE__ << "] " << "write pos: "<< *nOutPositionToWrite << '\n'; 
-#endif
+        } else {
+            //calculate out_position_to_write
+            if(next_seq_for_claim==0) {
+                *out_position_to_write = 0;
+            } else {
+                *out_position_to_write = ring_buffer_[next_seq_for_claim-1]->offset_position ;
+                DEBUG_LOG("write pos: "<< *out_position_to_write); 
             }
 
-
-            if( nNextSeqForClaim>0 && 
-                ringBuffer_[nNextSeqForClaim-1]->nOffsetPosition + nWantLen > nRawMemBufferCapacity_ )
-            {
+            if( next_seq_for_claim>0 && 
+                ring_buffer_[next_seq_for_claim-1]->offset_position + want_len > raw_mem_buffer_capacity_ ) {
                 //last write position + wanted data length > total data buffer size 
                 //--> start from 0 position  
-#if _DEBUG_
-                std::cout << "Ln[" << __LINE__ << "] " << "prevResetPos : "<< pStatusOnSharedMem_->prevResetPos<<  '\n'; 
-#endif
-                if( gatingSequence!=0 && gatingSequence < pStatusOnSharedMem_->prevResetPos )
-                {
+                DEBUG_LOG( "prev_reset_pos : "<< ring_buffer_status_on_shared_mem_->prev_reset_pos); 
+                if( gating_seq!=0 && 
+                    gating_seq < ring_buffer_status_on_shared_mem_->prev_reset_pos ) {
                     //but don't over-write customer data 
-                    //'gatingSequence == 0' means a consumer read index 0, so it is OK to write at index 0
+                    //'gating_seq == 0' means a consumer read index 0, so it is OK to write at index 0
                     
                     std::this_thread::yield();
-                    //std::this_thread::sleep_for(std::chrono::nanoseconds(1)); 
-
-#if _DEBUG_
-                    //std::this_thread::sleep_for(std::chrono::milliseconds(10)); //FOR DEBUG ONLY!
-                    std::cout << "Ln[" << __LINE__ << "] " << "spin... / gatingSequence=" << gatingSequence
-                              << " / nNextSeqForClaim= "<< nNextSeqForClaim 
-                              << " / pStatusOnSharedMem_->prevResetPos=" << pStatusOnSharedMem_->prevResetPos <<  '\n'; 
-#endif
+                    DEBUG_LOG( "spin... / gating_seq=" << gating_seq
+                          << " / next_seq_for_claim= "<< next_seq_for_claim 
+                          << " / ring_buffer_status_on_shared_mem_->prev_reset_pos=" 
+                          << ring_buffer_status_on_shared_mem_->prev_reset_pos ); 
                     continue;
                 }
-                
-                pStatusOnSharedMem_->prevResetPos = nNextSeqForClaim ;
-
-#if _DEBUG_
-                std::cout << "Ln[" << __LINE__ << "] " <<"nRawMemBufferCapacity_ :"<< nRawMemBufferCapacity_ 
-                          << " / gatingSequence: "<< gatingSequence << " / nWantLen:"
-                          << nWantLen <<" / ringBuffer_[gatingSequence]->nStartPosition: "
-                          << ringBuffer_[gatingSequence]->nStartPosition <<  '\n'; 
-
-                std::cout << "Ln[" << __LINE__ << "] " << "reset pos 0 "<<  '\n'; 
-#endif
-
-                *nOutPositionToWrite = 0;
+                ring_buffer_status_on_shared_mem_->prev_reset_pos = next_seq_for_claim ;
+                DEBUG_LOG("raw_mem_buffer_capacity_ :"<< raw_mem_buffer_capacity_ 
+                          << " / gating_seq: "<< gating_seq << " / want_len:"
+                          << want_len <<" / ring_buffer_[gating_seq]->start_position: "
+                          << ring_buffer_[gating_seq]->start_position );
+                DEBUG_LOG( "reset pos 0 "); 
+                *out_position_to_write = 0;
             }
-
             break;
         }
-    }
-    while (true);
+    } while (true);
 
-#if _DEBUG_
-    std::cout << "Ln[" << __LINE__ << "] " << "RETURN nNextSeqForClaim:" << nNextSeqForClaim << '\n'; 
-#endif
-    return nNextSeqForClaim;
-
+    DEBUG_LOG("RETURN next_seq_for_claim:" << next_seq_for_claim ); 
+    return next_seq_for_claim;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-bool SharedMemRingBuffer::Commit(int nUserId, int64_t index)
+bool SharedMemRingBuffer::Commit(int64_t index)
 {
     //cursor 가 index 바로 앞인 경우만 성공한다.
     int64_t expected = index -1 ;
 
-    while (true)
-    {
+    while (true) {
         //if ( cursor_.compare_exchange_strong(expected , index ))
-        if ( pStatusOnSharedMem_->cursor == expected )
-        {
-            pStatusOnSharedMem_->cursor = index;
+        if ( ring_buffer_status_on_shared_mem_->cursor == expected ) {
+            ring_buffer_status_on_shared_mem_->cursor = index;
 
             break;
         }
-    
         std::this_thread::yield();
-        //std::this_thread::sleep_for(std::chrono::nanoseconds(1)); 
     }
-    pWaitStrategy_->SignalAllWhenBlocking(); //blocking wait strategy only.
-
+    wait_strategy_->SignalAllWhenBlocking(); //blocking wait strategy only.
     return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 void SharedMemRingBuffer::SignalAll()
 {
-    pWaitStrategy_->SignalAllWhenBlocking(); //blocking wait strategy only.
+    wait_strategy_->SignalAllWhenBlocking(); //blocking wait strategy only.
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-int64_t SharedMemRingBuffer::WaitFor(int nUserId, int64_t nIndex)
+int64_t SharedMemRingBuffer::WaitFor(size_t user_id, int64_t index)
 {
-    int64_t nCurrentCursor = pStatusOnSharedMem_->cursor.load() ;
+    int64_t current_cursor = ring_buffer_status_on_shared_mem_->cursor.load() ;
 
-    if( nIndex > nCurrentCursor )
-    {
-#if _DEBUG_
+    if( index > current_cursor ) {
+        
+#if 0
         char szMsg[100];
         snprintf(szMsg, sizeof(szMsg), 
-                "[id:%d]    \t\t\t\t\t\t\t\t\t\t\t\t[%s-%d] index [%" PRId64 " - trans : %" PRId64 "] no data, wait for :nCurrentCursor[%" PRId64 "]", 
-                nUserId, __func__, __LINE__, nIndex, GetTranslatedIndex(nIndex),nCurrentCursor  );
+                "[id:%d]    \t\t\t\t\t\t\t\t\t\t\t\t[%s-%d] index [%" PRId64 " - trans : %" PRId64 "] no data, wait for :current_cursor[%" PRId64 "]", 
+                user_id, __func__, __LINE__, index, GetTranslatedIndex(index),current_cursor  );
         {AtomicPrint atomicPrint(szMsg);}
 #endif
         //wait strategy
-        return pWaitStrategy_->Wait(nIndex);
-    }
-    else
-    {
-#if _DEBUG_
+        return wait_strategy_->Wait(index);
+    } else {
+#if 0
         char szMsg[100];
         snprintf(szMsg, sizeof(szMsg), "[id:%d]    \t\t\t\t\t\t\t\t\t\t\t\t [%s-%d] index[%" PRId64 "] returns [%" PRId64 "] ",
-                nUserId, __func__, __LINE__, nIndex, pStatusOnSharedMem_->cursor.load() );
+                user_id, __func__, __LINE__, index, ring_buffer_status_on_shared_mem_->cursor.load() );
         {AtomicPrint atomicPrint(szMsg);}
 #endif
-        return nCurrentCursor ;
+        return current_cursor ;
     }
-
     return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-bool  SharedMemRingBuffer::CommitRead(int nUserId, int64_t index)
+bool  SharedMemRingBuffer::CommitRead(size_t user_id, int64_t index)
 {
-    pStatusOnSharedMem_->arrayOfConsumerIndexes[nUserId] = index ; //update
+    ring_buffer_status_on_shared_mem_->array_consumer_indexes[user_id] = index ; //update
 
-#if _DEBUG_
+#if 0
     char szMsg[100];
     snprintf(szMsg, sizeof(szMsg), 
-            "[id:%d]     \t\t\t\t\t\t\t\t\t\t\t\t[%s-%d] index[%" PRId64 "] ", nUserId, __func__, __LINE__, index );
+            "[id:%d]     \t\t\t\t\t\t\t\t\t\t\t\t[%s-%d] index[%" PRId64 "] ", user_id, __func__, __LINE__, index );
     {AtomicPrint atomicPrint(szMsg);}
 #endif
-
     return true;
 }
 

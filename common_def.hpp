@@ -1,6 +1,6 @@
 
-#ifndef __COMMON_DEF_HPP__
-#define __COMMON_DEF_HPP__
+#ifndef COMMON_DEF_HPP
+#define COMMON_DEF_HPP
 #include <atomic>
 #include <condition_variable>
 
@@ -11,25 +11,30 @@
 #include <sys/ipc.h> 
 #include <sys/shm.h> 
 
-//#define DEFAULT_RAW_MEM_BUFFER_SIZE 100000
-//#define DEFAULT_RAW_MEM_BUFFER_SIZE 30
+///////////////////////////////////////////////////////////////////////////////
+#define COLOR_RED  "\x1B[31m"
+#define COLOR_GREEN "\x1B[32m" 
+#define COLOR_BLUE "\x1B[34m"
+#define COLOR_RESET "\x1B[0m"
+#define  LOG_WHERE "("<<__FILE__<<"-"<<__func__<<"-"<<__LINE__<<") "
+#define  WHERE_DEF __FILE__,__func__,__LINE__
 
-typedef enum _ENUM_DATA_STATUS_
-{
-    DATA_EMPTY,
-    DATA_EXISTS
-} ENUM_DATA_STATUS ;
+#ifdef DEBUG_PRINTF
+#define  DEBUG_LOG(x)  std::cout<<LOG_WHERE << x << "\n"
+#define  DEBUG_RED_LOG(x) std::cout<<LOG_WHERE << COLOR_RED<< x << COLOR_RESET << "\n"
+#define  DEBUG_GREEN_LOG(x) std::cout<<LOG_WHERE << COLOR_GREEN<< x << COLOR_RESET << "\n"
+#define  DEBUG_ELOG(x) std::cerr<<LOG_WHERE << COLOR_RED<< x << COLOR_RESET << "\n"
+#else
+#define  DEBUG_LOG(x) 
+#define  DEBUG_ELOG(x) 
+#define  DEBUG_RED_LOG(x) 
+#define  DEBUG_GREEN_LOG(x)
+#endif
 
-typedef struct _PositionInfo_
-{
-    ENUM_DATA_STATUS  status;
-    int  nStartPosition; 
-    int  nOffsetPosition;
-    int  nLen;
-
-} PositionInfo ;
-
+#define  PRINT_ELOG(x) std::cerr<<LOG_WHERE << COLOR_RED<< x << COLOR_RESET << "\n"
 #define MAX_CONSUMER 200
+
+///////////////////////////////////////////////////////////////////////////////
 typedef struct _StatusOnSharedMem_
 {
     int  nBufferSize   ;
@@ -38,11 +43,11 @@ typedef struct _StatusOnSharedMem_
     std::atomic<int> registered_consumer_count;
     std::atomic<int64_t> cursor  __attribute__ ((aligned (64))) ;
     std::atomic<int64_t> next    __attribute__ ((aligned (64))) ;
-    int64_t arrayOfConsumerIndexes [MAX_CONSUMER] __attribute__ ((aligned (64)));
-    std::atomic<int64_t> prevResetPos    __attribute__ ((aligned (64))) ; 
+    int64_t array_consumer_indexes [MAX_CONSUMER] __attribute__ ((aligned (64)));
+    std::atomic<int64_t> prev_reset_pos    __attribute__ ((aligned (64))) ; 
 
-    pthread_cond_t   condVar;
-    pthread_mutex_t  mtxLock;
+    pthread_cond_t   cond_var ;
+    pthread_mutex_t  mutex_lock;
 
 } StatusOnSharedMem ;
 #endif

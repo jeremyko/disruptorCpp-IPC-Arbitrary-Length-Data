@@ -19,8 +19,8 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
  ****************************************************************************/
-#ifndef __ELAPSED_TIME_HPP__
-#define __ELAPSED_TIME_HPP__
+#ifndef ELAPSED_TIME_HPP
+#define ELAPSED_TIME_HPP
 
 #include <chrono>
 #include <string>
@@ -36,38 +36,31 @@ typedef enum _ENUM_TIME_RESOLUTION_
 
 } ENUM_TIME_RESOLUTION;
 
+////////////////////////////////////////////////////////////////////////////////
 class ElapsedTime
 {
     public:
-        ElapsedTime()
-        {
+        ElapsedTime() {
             SetStartTime();
         }
 
-        ~ElapsedTime()
-        {
+        ~ElapsedTime() {
         }
 
-        void SetStartTime()
-        {
+        void SetStartTime() {
             start_time_ = std::chrono::steady_clock::now(); 
         }
 
-        long long SetEndTime( ENUM_TIME_RESOLUTION resolution)
-        {
+        long long SetEndTime( ENUM_TIME_RESOLUTION resolution) {
             end_time_ = std::chrono::steady_clock::now(); 
 
-            if(resolution == MILLI_SEC_RESOLUTION)
-            {
+            if(resolution == MILLI_SEC_RESOLUTION) {
                 millisecs_t duration(std::chrono::duration_cast<millisecs_t>(end_time_ - start_time_));
                 return duration.count();
-            }
-            else if (resolution == MICRO_SEC_RESOLUTION)
-            {
+            } else if (resolution == MICRO_SEC_RESOLUTION) {
                 microsecs_t duration(std::chrono::duration_cast<microsecs_t>(end_time_ - start_time_));
                 return duration.count();
             }
-
             return -1; //error
         }
 

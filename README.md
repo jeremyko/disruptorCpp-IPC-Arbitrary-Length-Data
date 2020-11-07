@@ -1,20 +1,21 @@
 # disruptorCpp-IPC for arbitrary length of data 
 ## slightly modified version of [disruptorCpp-IPC](https://github.com/jeremyko/disruptorCpp-IPC)
 
+### compile
+
+    mkdir build; cd build; cmake ..; make
+
 ### inter thread test 
 
-    cd tests/inter_thread 
-    make clean all
+    cd build/tests/inter_thread 
     ./inter_thread_test 
 
 ### inter process test 
 
-    cd tests/inter_process 
-    make -f make_procucer.mk clean all
-    make -f make_consumer.mk clean all
+    cd build/tests/inter_process 
 
     //whenever you change number of cunsumer, producer or memory size, 
-    //clear shared memory first.
+    //clear shared memory first using ipcrm.
     //ipcrm -M 0x000e1740
     //ipcrm -M 0x0001e240
     
