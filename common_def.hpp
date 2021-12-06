@@ -44,7 +44,7 @@ typedef struct _StatusOnSharedMem_
     std::atomic<int> registered_consumer_count;
     std::atomic<int64_t> cursor  __attribute__ ((aligned (64))) ;
     std::atomic<int64_t> next    __attribute__ ((aligned (64))) ;
-    int64_t array_consumer_indexes [MAX_CONSUMER] __attribute__ ((aligned (64)));
+    std::atomic<int64_t> array_consumer_indexes [MAX_CONSUMER] __attribute__ ((aligned (64)));
     std::atomic<int64_t> prev_reset_pos    __attribute__ ((aligned (64))) ; 
 
     pthread_cond_t   cond_var ;
