@@ -14,13 +14,14 @@
 
     cd build/tests/inter_process 
 
-    //whenever you change number of cunsumer, producer or memory size, 
-    //clear shared memory first using ipcrm.
-    //ipcrm -M 0x000e1740
-    //ipcrm -M 0x0001e240
+    # whenever you change number of cunsumer, producer or memory size, 
+    # clear shared memory first using ipcrm.
+    # ipcrm -M 0x000e1740
+    # ipcrm -M 0x0001e240
     
-    //run 2 consumer, then 1 producer 
+    # run 2 consumer, then 1 producer 
     ./consumer 0 
     ./consumer 1
     ./producer
-    //make sure reset shared memory running 'ipcrm -M your_shmkey' if you have changed buffer size or number of producers/consumers.
+    # make sure reset shared memory running 'ipcrm -M your_shmkey' 
+    # if you have changed buffer size or number of producers/consumers.
