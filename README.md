@@ -16,8 +16,8 @@
 
     # whenever you change number of cunsumer, producer or memory size, 
     # clear shared memory first using ipcrm.
-    # ipcrm -M 0x000e1740
-    # ipcrm -M 0x0001e240
+    # ex) ipcrm -M 0x000e1740
+    #     ipcrm -M 0x0001e240
     
     # run 2 consumer, then 1 producer 
     ./consumer 0 
